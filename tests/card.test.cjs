@@ -144,3 +144,32 @@ test('CleanGenius failure prevents changing mode or starting cleaning', async ()
   c.selected.add(1); await c.run('clean');
   assert.equal(calls.length,1); assert.equal(calls[0][2].entity_id,'select.robot_cleangenius'); assert.equal(c.selected.size,1);
 });
+test('editor filters camera, cleaning mode and CleanGenius by purpose', () => {
+  const hass={states:{
+    'vacuum.stofzuiger':{attributes:{}},
+    'camera.stofzuiger_map':{attributes:{rooms:{}}},
+    'camera.deurbel':{attributes:{}},
+    'select.stofzuiger_cleaning_mode':{attributes:{options:['Stofzuigen','Dweilen']}},
+    'select.stofzuiger_cleangenius':{attributes:{options:['Off','Routine cleaning']}},
+    'select.lamp_effect':{attributes:{options:['Off','Rainbow']}},
+    'select.renamed_mode':{attributes:{options:['Sweeping','Mopping']}},
+  }};
+  const filter=kind=>JSON.parse(JSON.stringify(context.eligibleEntities(hass,{entity:'vacuum.stofzuiger'},kind)));
+  assert.deepEqual(filter('map'),['camera.stofzuiger_map']);
+  assert.deepEqual(filter('mode'),['select.stofzuiger_cleaning_mode','select.renamed_mode']);
+  assert.deepEqual(filter('genius'),['select.stofzuiger_cleangenius']);
+  assert.deepEqual(filter('vacuum'),['vacuum.stofzuiger']);
+});
+test('editor filters out known other integrations and other vacuum devices', () => {
+  const hass={states:{
+    'vacuum.a':{attributes:{}},'vacuum.other':{attributes:{}},
+    'camera.a_map':{attributes:{rooms:{}}},'camera.b_map':{attributes:{rooms:{}}},
+    'select.a_cleaning_mode':{attributes:{options:['Sweeping']}},'select.b_cleaning_mode':{attributes:{options:['Sweeping']}},
+  },entities:{
+    'vacuum.a':{platform:'dreame_vacuum',device_id:'a'},'vacuum.other':{platform:'roborock',device_id:'b'},
+    'camera.a_map':{platform:'dreame_vacuum',device_id:'a'},'camera.b_map':{platform:'dreame_vacuum',device_id:'b'},
+    'select.a_cleaning_mode':{platform:'dreame_vacuum',device_id:'a'},'select.b_cleaning_mode':{platform:'dreame_vacuum',device_id:'b'},
+  }};
+  const filter=kind=>JSON.parse(JSON.stringify(context.eligibleEntities(hass,{entity:'vacuum.a'},kind)));
+  assert.deepEqual(filter('vacuum'),['vacuum.a']); assert.deepEqual(filter('map'),['camera.a_map']); assert.deepEqual(filter('mode'),['select.a_cleaning_mode']);
+});

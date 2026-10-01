@@ -21,7 +21,9 @@ Repository: https://github.com/thimo234/Dream-vacu-m-card-
 5. Kies in je dashboard Bewerken → Kaart toevoegen → Dreame Compact Card.
 6. Kies je stofzuiger en laat **Kamers** op **Automatisch uit de robotkaart** staan. Stel eventueel de titel en hoogte in en klik op Opslaan. YAML is niet nodig.
 
-De editor toont alle vacuum-entiteiten: kies degene van de Tasshack-integratie. Kamernamen en ID’s worden uit het `rooms`-attribuut van de kaartcamera gelezen. Zonder cameragegevens gebruikt de kaart de kamers van `selected_map` op de vacuum-entiteit. Bij het wisselen van verdieping wordt de selectie gewist. De kamertegels en knoppen behouden hun bestaande uiterlijk.
+De editor gebruikt de doorzoekbare entiteitskiezer van Home Assistant. Zoek op naam of entiteits-ID. Stofzuigers, camera’s met kamergegevens, reinigingsmodus-selects en CleanGenius-selects worden per veld gefilterd. Als apparaat- en integratiegegevens beschikbaar zijn, worden andere integraties en entiteiten van een andere robot uitgesloten. Wis een optionele keuze om terug te gaan naar automatische herkenning.
+
+Kamernamen en ID’s worden uit het `rooms`-attribuut van de kaartcamera gelezen. Zonder cameragegevens gebruikt de kaart de kamers van `selected_map` op de vacuum-entiteit. Bij het wisselen van verdieping wordt de selectie gewist. De kamertegels en knoppen behouden hun bestaande uiterlijk.
 
 Als er geen kamers verschijnen, kies je in de editor de juiste **Kaartcamera**. De kaart gebruikt automatisch de gebruikelijke entiteitsnaam of een bijbehorende entiteit van hetzelfde apparaat; hij kiest niet zomaar een camera van een andere robot. Je kunt via **Kamer toevoegen** ook kamers handmatig invullen als terugval. Kies **Handmatig ingevulde kamers** om uitsluitend deze lijst te gebruiken.
 

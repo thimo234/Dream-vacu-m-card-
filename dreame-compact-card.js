@@ -1,4 +1,4 @@
-/* Dreame Compact Card v0.3.0 — no external dependencies. */
+/* Dreame Compact Card v0.3.1 — no external dependencies. */
 const MODE_OPTIONS = {
   vacuum: ['Sweeping', 'Vacuuming', 'Vacuum', 'Stofzuigen', 'Zuigen', 'Alleen stofzuigen', 'Alleen zuigen'],
   mop: ['Sweeping and mopping', 'Vacuum and mop', 'Stofzuigen en dweilen', 'Zuigen en dweilen', 'Stofzuigen + dweilen', 'Zuigen + dweilen'],
@@ -6,6 +6,24 @@ const MODE_OPTIONS = {
 };
 function findOption(state, aliases, explicit) {
   return state?.attributes?.options?.find(value => typeof value === 'string' && (explicit ? value === explicit : aliases.some(name => name.toLowerCase() === value.toLowerCase())));
+}
+function eligibleEntities(hass, config, kind) {
+  const states = hass?.states || {};
+  const registry = hass?.entities || {};
+  const device = registry[config.entity]?.device_id;
+  return Object.keys(states).filter(id => {
+    const state = states[id];
+    const entry = registry[id];
+    if (kind !== 'vacuum' && device && entry?.device_id && entry.device_id !== device) return false;
+    if (entry?.platform && entry.platform !== 'dreame_vacuum') return false;
+    if (kind === 'vacuum') return id.startsWith('vacuum.');
+    if (kind === 'map') return id.startsWith('camera.') && (state.attributes?.rooms != null || (entry?.platform === 'dreame_vacuum' && /_map$/.test(id)));
+    if (!id.startsWith('select.')) return false;
+    const identity = `${id} ${entry?.unique_id || ''} ${state.attributes?.friendly_name || ''}`;
+    if (kind === 'mode') return /cleaning_mode/i.test(identity) || Boolean(findOption(state, MODE_OPTIONS.vacuum));
+    if (kind === 'genius') return /cleangenius|clean genius/i.test(identity);
+    return false;
+  });
 }
 function relatedEntity(hass, vacuum, domain, suffix, explicit) {
   if (explicit) return explicit;
@@ -238,8 +256,9 @@ class DreameCompactCardEditor extends HTMLElement {
   }
   set hass(value) {
     this._hass = value;
-    const signature = JSON.stringify(Object.entries(value?.states || {}).filter(([id]) => /^(vacuum|camera|select)\./.test(id)).map(([id, state]) => [id, state.attributes?.friendly_name, state.attributes?.rooms, state.attributes?.selected_map, state.attributes?.options]));
+    const signature = JSON.stringify(Object.entries(value?.states || {}).filter(([id]) => /^(vacuum|camera|select)\./.test(id)).map(([id, state]) => [id, state.attributes?.friendly_name, state.attributes?.rooms, state.attributes?.selected_map, state.attributes?.options, value.entities?.[id]?.device_id, value.entities?.[id]?.platform]));
     if (signature !== this._entities) { this._entities = signature; this.render(); }
+    else for (const picker of this.shadowRoot.querySelectorAll('ha-entity-picker')) picker.hass = value;
   }
   emit() {
     const inputs = [...this.shadowRoot.querySelectorAll('input')];
@@ -271,13 +290,13 @@ class DreameCompactCardEditor extends HTMLElement {
         p { font-size:13px; color:var(--secondary-text-color); } .rooms { display:grid; gap:12px; }
       </style>
       <div class="fields">
-        <label>Stofzuiger<select class="entity"><option value="">Kies een stofzuiger</option></select></label>
+        <ha-entity-picker class="entity"></ha-entity-picker>
         <label>Titel<input class="title" type="text" placeholder="Dreame"></label>
         <label>Hoogte in pixels<input class="height" type="number" min="260" max="1200" step="1" required></label>
         <label>Kamers<select class="auto"><option value="true">Automatisch uit de robotkaart</option><option value="false">Handmatig ingevulde kamers</option></select></label>
-        <label>Kaartcamera<select class="map"><option value="">Automatisch herkennen</option></select></label>
-        <label>Reinigingsmodus-entiteit<select class="mode"><option value="">Automatisch herkennen</option></select></label>
-        <label>CleanGenius-entiteit<select class="genius"><option value="">Automatisch herkennen</option></select></label>
+        <ha-entity-picker class="map"></ha-entity-picker>
+        <ha-entity-picker class="mode"></ha-entity-picker>
+        <ha-entity-picker class="genius"></ha-entity-picker>
         <label>Optie voor CleanGenius uit<select class="off-option"><option value="">Automatisch herkennen</option></select></label>
         <label>Optie voor alleen zuigen<select class="vacuum-option"><option value="">Automatisch herkennen</option></select></label>
         <label>Optie voor zuigen + dweilen<select class="mop-option"><option value="">Automatisch herkennen</option></select></label>
@@ -287,29 +306,34 @@ class DreameCompactCardEditor extends HTMLElement {
         <button class="add" type="button">Kamer toevoegen</button>
       </div>`;
     const q = selector => this.shadowRoot.querySelector(selector);
-    const select = q('.entity');
-    const entities = Object.entries(this._hass?.states || {}).filter(([id]) => id.startsWith('vacuum.'));
-    if (this.config.entity && !entities.some(([id]) => id === this.config.entity)) entities.push([this.config.entity, {}]);
-    for (const [id, state] of entities) {
-      const option = document.createElement('option'); option.value = id;
-      option.textContent = state.attributes?.friendly_name ? `${state.attributes.friendly_name} (${id})` : id;
-      select.append(option);
-    }
-    select.value = this.config.entity || '';
-    select.onchange = () => { this.config.entity = select.value; this.emit(); };
     q('.auto').value = String(this.config.auto_rooms !== false);
     q('.auto').onchange = event => { this.config.auto_rooms = event.target.value === 'true'; this.emit(); };
-    for (const [selector, key, domain] of [['.map', 'map_entity', 'camera.'], ['.mode', 'cleaning_mode_entity', 'select.'], ['.genius', 'cleangenius_entity', 'select.']]) {
+    for (const [selector, key, kind, domain, label] of [
+      ['.entity', 'entity', 'vacuum', 'vacuum', 'Stofzuiger'],
+      ['.map', 'map_entity', 'map', 'camera', 'Kaartcamera'],
+      ['.mode', 'cleaning_mode_entity', 'mode', 'select', 'Reinigingsmodus-entiteit'],
+      ['.genius', 'cleangenius_entity', 'genius', 'select', 'CleanGenius-entiteit'],
+    ]) {
       const picker = q(selector);
-      const candidates = Object.keys(this._hass?.states || {}).filter(id => id.startsWith(domain));
-      if (this.config[key] && !candidates.includes(this.config[key])) candidates.push(this.config[key]);
-      for (const id of candidates) {
-        const option = document.createElement('option'); option.value = id;
-        option.textContent = this._hass?.states[id]?.attributes?.friendly_name ? `${this._hass.states[id].attributes.friendly_name} (${id})` : id;
-        picker.append(option);
-      }
-      picker.value = this.config[key] || '';
-      picker.onchange = () => { this.config[key] = picker.value; this.emit(); };
+      const candidates = eligibleEntities(this._hass, this.config, kind);
+      picker.hass = this._hass;
+      picker.label = label;
+      picker.placeholder = kind === 'vacuum' ? 'Zoek een stofzuiger' : 'Automatisch herkennen';
+      picker.helper = 'Zoek op naam of entiteits-ID. Alleen geschikte entiteiten worden getoond.';
+      picker.includeDomains = [domain];
+      picker.includeEntities = candidates;
+      picker.entityFilter = state => candidates.includes(state.entity_id);
+      picker.allowCustomEntity = false;
+      picker.showEntityId = true;
+      picker.required = kind === 'vacuum';
+      picker.value = this.config[key] || undefined;
+      picker.addEventListener('value-changed', event => {
+        event.stopPropagation();
+        const value = event.detail.value || '';
+        if (value && !candidates.includes(value)) return;
+        this.config[key] = value;
+        this.emit();
+      });
     }
     const modeId = relatedEntity(this._hass, this.config.entity, 'select', 'cleaning_mode', this.config.cleaning_mode_entity);
     const geniusId = relatedEntity(this._hass, this.config.entity, 'select', 'cleangenius', this.config.cleangenius_entity);
