@@ -4,7 +4,7 @@ Een compacte Nederlandstalige Home Assistant-kaart met kamerselectie, batterijst
 
 ## Voorwaarden
 
-Voor zes kamers kun je de hoogte in de editor op **400 pixels** zetten. De zes tegels passen dan in twee kolommen en drie rijen zonder scrollen, ook met de twee reinigingsmodusknoppen en de bedieningsknoppen zichtbaar.
+Voor zes kamers kun je de hoogte in de editor op **400 pixels** zetten. De zes tegels en de extra tegel **Alle ruimtes** passen dan zonder scrollen, met de bedieningsknoppen zichtbaar.
 
 - Je vierkante NSPanel Pro moet het Home Assistant-dashboard in een browser weergeven.
 - Een werkende Dreame-integratie met de actie `dreame_vacuum.vacuum_clean_segment` en parameter `segments`. Controleer dit in Ontwikkelaarstools → Acties. Niet iedere Dreame-integratie biedt dezelfde acties.
@@ -29,7 +29,7 @@ Als er geen kamers verschijnen, kies je in de editor de juiste **Kaartcamera**. 
 
 ### Alleen stofzuigen of ook dweilen
 
-De kaart toont twee keuzeknoppen: **Alleen zuigen** en **Zuigen + dweilen**. Standaard is **Alleen zuigen** geselecteerd. Kies de modus, selecteer kamers en druk op Start. Na een geslaagde start wordt weer **Alleen zuigen** geselecteerd voor de volgende opdracht. Kamernamen en de bestaande kamertegels blijven behouden.
+Selecteer kamers en druk op **Alleen zuigen** of **Zuigen + dweilen**. Deze knoppen starten direct de geselecteerde kamers in de gekozen modus. Er is geen losse modusselector of startknop meer. De tegel **Alle ruimtes** selecteert alle kamers van de huidige verdieping; deze selectie start op zichzelf geen reiniging. Je kunt daarna individuele kamers deselecteren. Zonder selectie zijn beide startknoppen uitgeschakeld. Kamernamen en de bestaande kamertegels blijven behouden.
 
 Voor elke start zet de kaart eerst de gevonden **CleanGenius**-select op uit, daarna de reinigingsmodus op alleen zuigen of zuigen met dweilen, en vervolgens start hij de geselecteerde kamers. Actieve aangepaste kamerreiniging wordt ook uitgeschakeld. Als een stap mislukt, start de kaart geen reiniging en toont hij een fout. Nederlandse en Engelse opties worden herkend, waaronder `Uit` / `Off`, `Stofzuigen` / `Sweeping` en `Stofzuigen en dweilen` / `Sweeping and mopping`.
 
@@ -72,7 +72,7 @@ rooms:
 
 Je kunt de visuele editor of YAML gebruiken. Voor schoonmaken zijn `entity` en minimaal één kamer nodig. `title`, `height` (260–1200 CSS-pixels) en kamericonen zijn optioneel. De standaardhoogte is 360 pixels. De kaart neemt de beschikbare breedte in; richtwaarde minimaal 280 CSS-pixels. De kamerknoppen staan in twee kolommen en de kamerlijst scrolt bij meer kamers. Houd rekening met de Home Assistant-kopbalk, dashboardmarges en browserzoom bij het kiezen van de hoogte. Een schermresolutie is niet altijd gelijk aan de beschikbare ruimte in CSS-pixels.
 
-Selecteer kamers en druk op Start. Een lege selectie kan nooit een schoonmaakopdracht versturen. Tijdens een lopende aanvraag worden knoppen geblokkeerd. Na een geslaagde aanvraag wordt de selectie gewist; bij een fout blijft deze behouden. 'Opdracht verstuurd' bevestigt alleen dat Home Assistant de aanvraag heeft geaccepteerd. Bij schoonmaken, terugkeren of een storing is een nieuwe kameropdracht geblokkeerd. Pauze en laadstation gebruiken de standaard `vacuum`-acties.
+Selecteer kamers en druk op een van de twee reinigingsknoppen. Een lege selectie kan nooit een schoonmaakopdracht versturen. Tijdens een lopende aanvraag worden knoppen geblokkeerd. Na een geslaagde aanvraag wordt de selectie gewist; bij een fout blijft deze behouden. 'Opdracht verstuurd' bevestigt alleen dat Home Assistant de aanvraag heeft geaccepteerd. Bij schoonmaken, terugkeren of een storing is een nieuwe kameropdracht geblokkeerd. Pauze en laadstation gebruiken de standaard `vacuum`-acties.
 
 ## Handmatig testen zonder HACS
 

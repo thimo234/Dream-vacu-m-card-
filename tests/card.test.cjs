@@ -96,9 +96,10 @@ test('does not discover a map belonging to another robot', () => {
   c.hass = {...c._hass,states:{...c._hass.states,'camera.other_map':{attributes:{rooms:{A:{room_id:1,name:'Andere robot'}}}}}};
   assert.equal(c.rooms.length, 0);
 });
-test('mopping selects combined mode and resets after starting', async () => {
-  const calls = []; const c = card(async (...args) => calls.push(args)); c.mop = true; c.selected.add(1);
-  await c.run('clean'); assert.equal(calls[0][2].option, 'Sweeping and mopping'); assert.equal(calls[1][1], 'vacuum_clean_segment'); assert.equal(c.mop, false);
+test('mopping starts combined mode directly and next ordinary call is vacuum-only', async () => {
+  const calls = []; const c = card(async (...args) => calls.push(args)); c.selected.add(1);
+  await c.run('clean', true); assert.equal(calls[0][2].option, 'Sweeping and mopping'); assert.equal(calls[1][1], 'vacuum_clean_segment');
+  c.selected.add(1); await c.run('clean'); assert.equal(calls[2][2].option, 'Sweeping');
 });
 test('missing cleaning mode blocks cleaning instead of using previous mode', async () => {
   const calls = []; const c = card(async (...args) => calls.push(args)); delete c._hass.states['select.robot_cleaning_mode']; c.selected.add(1);
@@ -134,7 +135,7 @@ test('explicit options and renamed CleanGenius support nonstandard option string
   c.setConfig({entity:'vacuum.robot',cleangenius_entity:'select.ai',cleangenius_off_option:'Stop intelligent',mop_option:'Combined clean',rooms:[{id:1,name:'Hal'}]});
   c._hass.states['select.ai']={state:'Auto',attributes:{options:['Stop intelligent','Auto']}};
   c._hass.states['select.robot_cleaning_mode'].attributes.options.push('Combined clean');
-  c.mop = true; c.selected.add(1); await c.run('clean');
+  c.selected.add(1); await c.run('clean', true);
   assert.equal(calls[0][2].entity_id,'select.ai'); assert.equal(calls[0][2].option,'Stop intelligent');
   assert.equal(calls[1][2].option,'Combined clean'); assert.equal(calls[2][1],'vacuum_clean_segment');
 });
@@ -172,4 +173,11 @@ test('editor filters out known other integrations and other vacuum devices', () 
   }};
   const filter=kind=>JSON.parse(JSON.stringify(context.eligibleEntities(hass,{entity:'vacuum.a'},kind)));
   assert.deepEqual(filter('vacuum'),['vacuum.a']); assert.deepEqual(filter('map'),['camera.a_map']); assert.deepEqual(filter('mode'),['select.a_cleaning_mode']);
+});
+test('select-all includes only current room IDs and does not start cleaning', () => {
+  let calls = 0; const c = card(async () => calls++);
+  c.selected.add(99); c.selectAll();
+  assert.deepEqual([...c.selected],[1,7]); assert.equal(calls,0);
+  c.pending = true; c.rooms = [{id:9,name:'Nieuwe kamer'}]; c.selectAll();
+  assert.deepEqual([...c.selected],[1,7]);
 });

@@ -1,4 +1,4 @@
-/* Dreame Compact Card v0.3.1 — no external dependencies. */
+/* Dreame Compact Card v0.4.0 — no external dependencies. */
 const MODE_OPTIONS = {
   vacuum: ['Sweeping', 'Vacuuming', 'Vacuum', 'Stofzuigen', 'Zuigen', 'Alleen stofzuigen', 'Alleen zuigen'],
   mop: ['Sweeping and mopping', 'Vacuum and mop', 'Stofzuigen en dweilen', 'Zuigen en dweilen', 'Stofzuigen + dweilen', 'Zuigen + dweilen'],
@@ -64,7 +64,6 @@ class DreameCompactCard extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.selected = new Set();
     this.pending = false;
-    this.mop = false;
   }
 
   setConfig(config) {
@@ -81,7 +80,6 @@ class DreameCompactCard extends HTMLElement {
     const height = config.height ?? 360;
     if (!Number.isInteger(height) || height < 260 || height > 1200) throw new Error('height moet tussen 260 en 1200 liggen.');
     this.config = { ...config, height, rooms: config.rooms.map(room => ({ ...room })) };
-    this.mop = false;
     this.selected.clear();
     this.message = '';
     this.syncRooms();
@@ -123,29 +121,31 @@ class DreameCompactCard extends HTMLElement {
         button:focus-visible { outline:3px solid var(--accent); outline-offset:-3px; }
         button:disabled { opacity:.45; cursor:default; }
         .clear { background:transparent; min-height:32px; padding:0 8px; color:var(--accent); }
-        .rooms { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:minmax(48px,1fr); align-content:start; gap:8px; overflow:auto; flex:1; min-height:0; }
+        .rooms { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:minmax(48px,1fr); align-content:start; gap:6px; overflow:auto; flex:1; min-height:0; }
+        .all-rooms { grid-column:1 / -1; }
         .room { display:flex; align-items:center; gap:8px; text-align:left; padding:8px; min-width:0; border:2px solid transparent; border-radius:13px; background:var(--secondary-background-color,#eff3f1); }
         .room span { overflow-wrap:anywhere; font-size:14px; flex:1; }
         .room[aria-pressed=true] { border-color:var(--accent); background:var(--primary-background-color,#e5f3ee); }
         .check { font-size:17px; color:var(--accent); }
-        footer { display:grid; grid-template-columns:minmax(0,1fr) 46px 46px; gap:8px; flex-shrink:0; }
-        footer button { min-height:46px; border-radius:12px; background:var(--secondary-background-color,#eff3f1); }
+        footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)) 40px 40px; gap:6px; flex-shrink:0; }
+        footer button { min-height:46px; border-radius:12px; padding:6px; font-size:12px; background:var(--secondary-background-color,#eff3f1); }
         .start { background:var(--accent); color:var(--text-primary-color,#fff); font-weight:600; padding:8px; }
         .message { margin:0; font-size:12px; max-height:44px; overflow:auto; } .message:empty { display:none; }
-        .modes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; flex-shrink:0; }
-        .modes button { min-height:44px; padding:6px; font-size:13px; border:2px solid transparent; border-radius:12px; background:var(--secondary-background-color,#eff3f1); }
-        .modes button[aria-pressed=true] { border-color:var(--accent); color:var(--accent); font-weight:600; }
       </style>
       <ha-card>
         <header><ha-icon class="robot" icon="mdi:robot-vacuum"></ha-icon><div class="heading"><h2></h2><span class="status"></span></div><span class="battery"></span></header>
         <div class="toolbar"><span class="count"></span><button class="clear">Wis selectie</button></div>
         <div class="rooms" role="group" aria-label="Ruimtes selecteren"></div>
-        <div class="modes" role="group" aria-label="Reinigingsmodus"><button class="vacuum-mode" aria-pressed="true">Alleen zuigen</button><button class="mop-mode" aria-pressed="false">Zuigen + dweilen</button></div>
         <p class="message" role="status" aria-live="polite"></p>
-        <footer><button class="start"></button><button class="pause" aria-label="Pauzeren" title="Pauzeren"><ha-icon icon="mdi:pause"></ha-icon></button><button class="dock" aria-label="Naar laadstation" title="Naar laadstation"><ha-icon icon="mdi:home-import-outline"></ha-icon></button></footer>
+        <footer><button class="start vacuum-start">Alleen zuigen</button><button class="start mop-start">Zuigen + dweilen</button><button class="pause" aria-label="Pauzeren" title="Pauzeren"><ha-icon icon="mdi:pause"></ha-icon></button><button class="dock" aria-label="Naar laadstation" title="Naar laadstation"><ha-icon icon="mdi:home-import-outline"></ha-icon></button></footer>
       </ha-card>`;
     this.shadowRoot.querySelector('h2').textContent = this.config.title || 'Dreame';
     const container = this.shadowRoot.querySelector('.rooms');
+    const all = document.createElement('button');
+    all.className = 'room all-rooms';
+    all.innerHTML = '<ha-icon icon="mdi:select-all"></ha-icon><span>Alle ruimtes</span><b class="check" aria-hidden="true"></b>';
+    all.onclick = () => this.selectAll();
+    container.append(all);
     for (const room of this.rooms || []) {
       const button = document.createElement('button');
       button.className = 'room';
@@ -166,11 +166,17 @@ class DreameCompactCard extends HTMLElement {
       container.append(button);
     }
     this.shadowRoot.querySelector('.clear').onclick = () => { this.selected.clear(); this.update(); };
-    this.shadowRoot.querySelector('.start').onclick = () => this.run('clean');
+    this.shadowRoot.querySelector('.vacuum-start').onclick = () => this.run('clean', false);
+    this.shadowRoot.querySelector('.mop-start').onclick = () => this.run('clean', true);
     this.shadowRoot.querySelector('.pause').onclick = () => this.run('pause');
     this.shadowRoot.querySelector('.dock').onclick = () => this.run('return_to_base');
-    this.shadowRoot.querySelector('.vacuum-mode').onclick = () => { if (!this.pending) { this.mop = false; this.update(); } };
-    this.shadowRoot.querySelector('.mop-mode').onclick = () => { if (!this.pending) { this.mop = true; this.update(); } };
+    this.update();
+  }
+
+  selectAll() {
+    if (this.pending) return;
+    this.selected = new Set((this.rooms || []).map(room => room.id));
+    this.message = '';
     this.update();
   }
 
@@ -185,20 +191,18 @@ class DreameCompactCard extends HTMLElement {
     q('.battery').textContent = typeof battery === 'number' ? `${battery}%` : '';
     q('.count').textContent = `${this.selected.size} geselecteerd`;
     for (const button of this.shadowRoot.querySelectorAll('.room')) {
-      const active = this.selected.has(Number(button.dataset.id));
+      const active = button.classList.contains('all-rooms') ? Boolean(this.rooms?.length) && this.rooms.every(room => this.selected.has(room.id)) : this.selected.has(Number(button.dataset.id));
       button.setAttribute('aria-pressed', String(active));
       button.querySelector('.check').textContent = active ? '✓' : '';
       button.disabled = this.pending;
     }
-    q('.start').textContent = this.pending ? 'Even wachten…' : `Start${this.selected.size ? ` · ${this.selected.size} ${this.selected.size === 1 ? 'ruimte' : 'ruimtes'}` : ' schoonmaken'}`;
-    q('.start').disabled = offline || this.pending || !this.selected.size || ['cleaning', 'returning', 'error'].includes(state?.state);
+    const cannotStart = offline || this.pending || !this.selected.size || ['cleaning', 'returning', 'error'].includes(state?.state);
+    q('.vacuum-start').disabled = cannotStart;
+    q('.mop-start').disabled = cannotStart;
+    q('.all-rooms').disabled = this.pending || !this.rooms?.length;
     q('.pause').disabled = offline || this.pending || state?.state !== 'cleaning';
     q('.dock').disabled = offline || this.pending || ['docked', 'returning'].includes(state?.state);
     q('.clear').disabled = this.pending || !this.selected.size;
-    q('.vacuum-mode').setAttribute('aria-pressed', String(!this.mop));
-    q('.mop-mode').setAttribute('aria-pressed', String(this.mop));
-    q('.vacuum-mode').disabled = this.pending;
-    q('.mop-mode').disabled = this.pending;
     q('.message').textContent = this.message || (!this.rooms?.length ? 'Geen kamers gevonden. Kies de kaartcamera in de editor of voeg kamers handmatig toe.' : '');
   }
 
@@ -222,7 +226,7 @@ class DreameCompactCard extends HTMLElement {
     await hass.callService('select', 'select_option', { entity_id:modeEntity, option });
   }
 
-  async run(action) {
+  async run(action, mop = false) {
     const state = this._hass?.states[this.config.entity];
     if (this.pending || !state || ['unknown', 'unavailable'].includes(state.state)) return;
     if (action === 'clean' && (!this.selected.size || ['cleaning', 'returning', 'error'].includes(state.state))) return;
@@ -231,14 +235,12 @@ class DreameCompactCard extends HTMLElement {
     const config = this.config;
     const context = this._roomContext;
     const segments = [...this.selected];
-    const mop = this.mop;
     try {
       if (action === 'clean') {
         await this.prepareMode(hass, config, mop);
         if (this.config !== config || context !== this._roomContext) throw new Error('De kaart of verdieping is gewijzigd. Selecteer de kamers opnieuw.');
         await hass.callService('dreame_vacuum', 'vacuum_clean_segment', { entity_id:config.entity, segments });
         this.selected.clear();
-        this.mop = false;
       } else {
         await this._hass.callService('vacuum', action, { entity_id:this.config.entity });
       }
@@ -301,7 +303,7 @@ class DreameCompactCardEditor extends HTMLElement {
         <label>Optie voor alleen zuigen<select class="vacuum-option"><option value="">Automatisch herkennen</option></select></label>
         <label>Optie voor zuigen + dweilen<select class="mop-option"><option value="">Automatisch herkennen</option></select></label>
         <p class="detected"></p>
-        <p>Standaard is ‘Alleen zuigen’ geselecteerd. Kies ‘Zuigen + dweilen’ voor beide. Selecteer kamers en druk op Start. Handmatige kamers worden gebruikt als automatisch geen kamers gevonden worden.</p>
+        <p>Selecteer kamers of kies ‘Alle ruimtes’. De knoppen ‘Alleen zuigen’ en ‘Zuigen + dweilen’ starten direct de geselecteerde kamers. Handmatige kamers worden gebruikt als automatisch geen kamers gevonden worden.</p>
         <div class="rooms"></div>
         <button class="add" type="button">Kamer toevoegen</button>
       </div>`;
