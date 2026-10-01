@@ -1,14 +1,44 @@
-/* Dreame Compact Card v0.1.0 — no external dependencies. */
+/* Dreame Compact Card v0.2.0 — no external dependencies. */
+function relatedEntity(hass, vacuum, domain, suffix, explicit) {
+  if (explicit) return explicit;
+  const states = hass?.states || {};
+  const conventional = `${domain}.${vacuum?.split('.')[1]}_${suffix}`;
+  if (states[conventional]) return conventional;
+  const device = hass?.entities?.[vacuum]?.device_id;
+  const matches = Object.keys(states).filter(id => id.startsWith(`${domain}.`) && id.endsWith(`_${suffix}`) && device && hass.entities?.[id]?.device_id === device);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function parseDreameRooms(data) {
+  if (!data || typeof data !== 'object') return [];
+  const rooms = new Map();
+  for (const [key, value] of Object.entries(data)) {
+    const id = Number(value?.room_id ?? value?.id ?? key);
+    if (!Number.isInteger(id) || id < 1 || !value || typeof value !== 'object') continue;
+    rooms.set(id, { id, name: typeof value.name === 'string' && value.name.trim() ? value.name : `Ruimte ${id}`, icon: typeof value.icon === 'string' && value.icon.startsWith('mdi:') ? value.icon : 'mdi:floor-plan' });
+  }
+  return [...rooms.values()];
+}
+
+function discoverRooms(hass, config) {
+  const attrs = hass?.states?.[config.entity]?.attributes || {};
+  const map = relatedEntity(hass, config.entity, 'camera', 'map', config.map_entity);
+  const cameraRooms = parseDreameRooms(hass?.states?.[map]?.attributes?.rooms);
+  const vacuumRooms = parseDreameRooms(attrs.rooms?.[attrs.selected_map] ?? (Array.isArray(attrs.rooms) ? attrs.rooms : undefined));
+  return { rooms: cameraRooms.length ? cameraRooms : vacuumRooms, context: JSON.stringify([config.entity, map, attrs.selected_map, hass?.states?.[map]?.attributes?.map_id]) };
+}
+
 class DreameCompactCard extends HTMLElement {
   static getConfigElement() { return document.createElement('dreame-compact-card-editor'); }
   static getStubConfig(hass) {
-    return { entity: Object.keys(hass?.states || {}).find(id => id.startsWith('vacuum.')) || '', title: 'Dreame', height: 360, rooms: [] };
+    return { entity: Object.keys(hass?.states || {}).find(id => id.startsWith('vacuum.')) || '', title: 'Dreame', height: 360, auto_rooms: true, rooms: [] };
   }
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
     this.selected = new Set();
     this.pending = false;
+    this.mop = false;
   }
 
   setConfig(config) {
@@ -25,12 +55,29 @@ class DreameCompactCard extends HTMLElement {
     const height = config.height ?? 360;
     if (!Number.isInteger(height) || height < 260 || height > 1200) throw new Error('height moet tussen 260 en 1200 liggen.');
     this.config = { ...config, height, rooms: config.rooms.map(room => ({ ...room })) };
+    this.mop = false;
     this.selected.clear();
-    this.message = !config.entity || !config.rooms.length ? 'Kies een stofzuiger en voeg kamers toe in de kaarteditor.' : '';
+    this.message = '';
+    this.syncRooms();
     this.render();
   }
 
-  set hass(value) { this._hass = value; this.update(); }
+  syncRooms() {
+    if (!this.config) return false;
+    const discovery = discoverRooms(this._hass, this.config);
+    const automatic = this.config.auto_rooms !== false;
+    const rooms = automatic && discovery.rooms.length ? discovery.rooms : this.config.rooms;
+    const signature = JSON.stringify([discovery.context, rooms]);
+    if (signature === this._roomSignature) return false;
+    if (this._roomContext !== discovery.context) this.selected.clear();
+    const ids = new Set(rooms.map(room => room.id));
+    for (const id of this.selected) if (!ids.has(id)) this.selected.delete(id);
+    this.rooms = rooms;
+    this._roomContext = discovery.context;
+    this._roomSignature = signature;
+    return true;
+  }
+  set hass(value) { this._hass = value; if (this.syncRooms()) this.render(); else this.update(); }
   getCardSize() { return Math.ceil((this.config?.height ?? 360) / 50); }
   getGridOptions() { return { columns: 12, min_columns: 6, rows: Math.ceil((this.config?.height ?? 360) / 56) }; }
 
@@ -59,17 +106,19 @@ class DreameCompactCard extends HTMLElement {
         footer button { min-height:46px; border-radius:12px; background:var(--secondary-background-color,#eff3f1); }
         .start { background:var(--accent); color:var(--text-primary-color,#fff); font-weight:600; padding:8px; }
         .message { margin:0; font-size:12px; max-height:44px; overflow:auto; } .message:empty { display:none; }
+        .mop { display:flex; align-items:center; gap:8px; min-height:36px; font-size:14px; } .mop input { width:22px; height:22px; accent-color:var(--accent); }
       </style>
       <ha-card>
         <header><ha-icon class="robot" icon="mdi:robot-vacuum"></ha-icon><div class="heading"><h2></h2><span class="status"></span></div><span class="battery"></span></header>
         <div class="toolbar"><span class="count"></span><button class="clear">Wis selectie</button></div>
         <div class="rooms" role="group" aria-label="Ruimtes selecteren"></div>
+        <label class="mop"><input type="checkbox">Ook dweilen</label>
         <p class="message" role="status" aria-live="polite"></p>
         <footer><button class="start"></button><button class="pause" aria-label="Pauzeren" title="Pauzeren"><ha-icon icon="mdi:pause"></ha-icon></button><button class="dock" aria-label="Naar laadstation" title="Naar laadstation"><ha-icon icon="mdi:home-import-outline"></ha-icon></button></footer>
       </ha-card>`;
     this.shadowRoot.querySelector('h2').textContent = this.config.title || 'Dreame';
     const container = this.shadowRoot.querySelector('.rooms');
-    for (const room of this.config.rooms) {
+    for (const room of this.rooms || []) {
       const button = document.createElement('button');
       button.className = 'room';
       button.dataset.id = room.id;
@@ -92,6 +141,7 @@ class DreameCompactCard extends HTMLElement {
     this.shadowRoot.querySelector('.start').onclick = () => this.run('clean');
     this.shadowRoot.querySelector('.pause').onclick = () => this.run('pause');
     this.shadowRoot.querySelector('.dock').onclick = () => this.run('return_to_base');
+    this.shadowRoot.querySelector('.mop input').onchange = event => { this.mop = event.target.checked; this.update(); };
     this.update();
   }
 
@@ -116,7 +166,28 @@ class DreameCompactCard extends HTMLElement {
     q('.pause').disabled = offline || this.pending || state?.state !== 'cleaning';
     q('.dock').disabled = offline || this.pending || ['docked', 'returning'].includes(state?.state);
     q('.clear').disabled = this.pending || !this.selected.size;
-    q('.message').textContent = this.message || '';
+    q('.mop input').checked = this.mop;
+    q('.mop input').disabled = this.pending;
+    q('.message').textContent = this.message || (!this.rooms?.length ? 'Geen kamers gevonden. Kies de kaartcamera in de editor of voeg kamers handmatig toe.' : '');
+  }
+
+  async prepareMode(hass, config, mop) {
+    const modeEntity = relatedEntity(hass, config.entity, 'select', 'cleaning_mode', config.cleaning_mode_entity);
+    const mode = hass.states[modeEntity];
+    if (!mode || ['unavailable', 'unknown'].includes(mode.state)) throw new Error('Kies een beschikbare reinigingsmodus-entiteit in de kaarteditor.');
+    const wanted = mop ? ['Sweeping and mopping', 'Vacuum and mop'] : ['Sweeping', 'Vacuuming', 'Vacuum'];
+    const option = mode.attributes?.options?.find(value => wanted.some(name => name.toLowerCase() === value.toLowerCase()));
+    if (!option) throw new Error(mop ? 'Deze stofzuiger biedt geen stofzuigen met dweilen aan.' : 'De optie alleen stofzuigen is niet beschikbaar.');
+    const custom = relatedEntity(hass, config.entity, 'switch', 'customized_cleaning');
+    if (hass.states[custom]?.state === 'on') await hass.callService('switch', 'turn_off', { entity_id:custom });
+    const genius = relatedEntity(hass, config.entity, 'select', 'cleangenius');
+    const geniusState = hass.states[genius];
+    if (geniusState && geniusState.state.toLowerCase() !== 'off') {
+      const off = geniusState.attributes?.options?.find(value => value.toLowerCase() === 'off');
+      if (!off) throw new Error('Schakel CleanGenius uit voordat je een vaste reinigingsmodus gebruikt.');
+      await hass.callService('select', 'select_option', { entity_id:genius, option:off });
+    }
+    await hass.callService('select', 'select_option', { entity_id:modeEntity, option });
   }
 
   async run(action) {
@@ -124,10 +195,18 @@ class DreameCompactCard extends HTMLElement {
     if (this.pending || !state || ['unknown', 'unavailable'].includes(state.state)) return;
     if (action === 'clean' && (!this.selected.size || ['cleaning', 'returning', 'error'].includes(state.state))) return;
     this.pending = true; this.message = ''; this.update();
+    const hass = this._hass;
+    const config = this.config;
+    const context = this._roomContext;
+    const segments = [...this.selected];
+    const mop = this.mop;
     try {
       if (action === 'clean') {
-        await this._hass.callService('dreame_vacuum', 'vacuum_clean_segment', { entity_id:this.config.entity, segments:[...this.selected] });
+        await this.prepareMode(hass, config, mop);
+        if (this.config !== config || context !== this._roomContext) throw new Error('De kaart of verdieping is gewijzigd. Selecteer de kamers opnieuw.');
+        await hass.callService('dreame_vacuum', 'vacuum_clean_segment', { entity_id:config.entity, segments });
         this.selected.clear();
+        this.mop = false;
       } else {
         await this._hass.callService('vacuum', action, { entity_id:this.config.entity });
       }
@@ -145,7 +224,7 @@ class DreameCompactCardEditor extends HTMLElement {
   }
   set hass(value) {
     this._hass = value;
-    const signature = JSON.stringify(Object.entries(value?.states || {}).filter(([id]) => id.startsWith('vacuum.')).map(([id, state]) => [id, state.attributes?.friendly_name]));
+    const signature = JSON.stringify(Object.entries(value?.states || {}).filter(([id]) => /^(vacuum|camera|select)\./.test(id)).map(([id, state]) => [id, state.attributes?.friendly_name, state.attributes?.rooms, state.attributes?.selected_map]));
     if (signature !== this._entities) { this._entities = signature; this.render(); }
   }
   emit() {
@@ -181,7 +260,11 @@ class DreameCompactCardEditor extends HTMLElement {
         <label>Stofzuiger<select class="entity"><option value="">Kies een stofzuiger</option></select></label>
         <label>Titel<input class="title" type="text" placeholder="Dreame"></label>
         <label>Hoogte in pixels<input class="height" type="number" min="260" max="1200" step="1" required></label>
-        <p>360 pixels is het startpunt voor je vierkante NSPanel Pro. Gebruik de numerieke kamer-ID’s van de huidige kaart in de Tasshack-integratie.</p>
+        <label>Kamers<select class="auto"><option value="true">Automatisch uit de robotkaart</option><option value="false">Handmatig ingevulde kamers</option></select></label>
+        <label>Kaartcamera<select class="map"><option value="">Automatisch herkennen</option></select></label>
+        <label>Reinigingsmodus-entiteit<select class="mode"><option value="">Automatisch herkennen</option></select></label>
+        <p class="detected"></p>
+        <p>Standaard wordt alleen gezogen. Met ‘Ook dweilen’ op de kaart kies je stofzuigen met dweilen. Handmatige kamers worden gebruikt als automatisch geen kamers gevonden worden.</p>
         <div class="rooms"></div>
         <button class="add" type="button">Kamer toevoegen</button>
       </div>`;
@@ -196,6 +279,22 @@ class DreameCompactCardEditor extends HTMLElement {
     }
     select.value = this.config.entity || '';
     select.onchange = () => { this.config.entity = select.value; this.emit(); };
+    q('.auto').value = String(this.config.auto_rooms !== false);
+    q('.auto').onchange = event => { this.config.auto_rooms = event.target.value === 'true'; this.emit(); };
+    for (const [selector, key, domain] of [['.map', 'map_entity', 'camera.'], ['.mode', 'cleaning_mode_entity', 'select.']]) {
+      const picker = q(selector);
+      const candidates = Object.keys(this._hass?.states || {}).filter(id => id.startsWith(domain));
+      if (this.config[key] && !candidates.includes(this.config[key])) candidates.push(this.config[key]);
+      for (const id of candidates) {
+        const option = document.createElement('option'); option.value = id;
+        option.textContent = this._hass?.states[id]?.attributes?.friendly_name ? `${this._hass.states[id].attributes.friendly_name} (${id})` : id;
+        picker.append(option);
+      }
+      picker.value = this.config[key] || '';
+      picker.onchange = () => { this.config[key] = picker.value; this.emit(); };
+    }
+    const discovered = discoverRooms(this._hass, this.config).rooms;
+    q('.detected').textContent = discovered.length ? `Gevonden kamers: ${discovered.map(room => room.name).join(', ')}` : 'Nog geen kamers gevonden. Kies zo nodig de kaartcamera van je Dreame.';
     q('.title').value = this.config.title ?? 'Dreame';
     q('.title').onchange = event => { this.config.title = event.target.value; this.emit(); };
     q('.height').value = this.config.height ?? 360;

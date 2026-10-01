@@ -1,1 +1,1 @@
-{"name":"dreame-compact-card","version":"0.1.0","private":true,"scripts":{"test":"node --test tests/card.test.cjs","check":"node --check dreame-compact-card.js"}}
+{"name":"dreame-compact-card","version":"0.2.0","private":true,"scripts":{"test":"node --test tests/card.test.cjs","check":"node --check dreame-compact-card.js"}}

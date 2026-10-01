@@ -6,7 +6,7 @@ Een compacte Nederlandstalige Home Assistant-kaart met kamerselectie, batterijst
 
 - Je vierkante NSPanel Pro moet het Home Assistant-dashboard in een browser weergeven.
 - Een werkende Dreame-integratie met de actie `dreame_vacuum.vacuum_clean_segment` en parameter `segments`. Controleer dit in Ontwikkelaarstools → Acties. Niet iedere Dreame-integratie biedt dezelfde acties.
-- De vacuum-entiteit en numerieke kamer-ID's van je huidige robotkaart. Gebruik de ID's uit de integratie; onderstaande nummers zijn voorbeelden. Na opnieuw indelen van kamers of wisselen van verdieping kunnen andere ID's nodig zijn.
+- De vacuum-entiteit, kaartcamera met `rooms` en select-entiteit voor `cleaning_mode` van je robot. De kaart probeert bijbehorende entiteiten automatisch te vinden; je kunt de camera en reinigingsmodus ook kiezen in de editor.
 
 ## Installeren via HACS
 
@@ -17,9 +17,17 @@ Repository: https://github.com/thimo234/Dream-vacu-m-card-
 3. Download Dreame Compact Card en herlaad de browser.
 4. Als de resource niet automatisch is toegevoegd, voeg onder Dashboard-resources `/hacsfiles/Dream-vacu-m-card-/dreame-compact-card.js` toe met type JavaScript-module.
 5. Kies in je dashboard Bewerken → Kaart toevoegen → Dreame Compact Card.
-6. Kies je stofzuiger, stel de titel en hoogte in en klik op **Kamer toevoegen**. Vul per kamer het ID, de naam en eventueel een `mdi:`-icoon in. Klik daarna op Opslaan. YAML is niet nodig.
+6. Kies je stofzuiger en laat **Kamers** op **Automatisch uit de robotkaart** staan. Stel eventueel de titel en hoogte in en klik op Opslaan. YAML is niet nodig.
 
-De editor toont alle vacuum-entiteiten: kies degene van de Tasshack-integratie. Kamer-ID’s moeten nog handmatig worden ingevuld; de kaart haalt ze niet automatisch uit de robot. Dubbele of ongeldige ID’s worden tegengehouden. Bij een nieuwe kaart worden geen voorbeeldkamers opgeslagen die per ongeluk de verkeerde ruimte zouden kunnen starten.
+De editor toont alle vacuum-entiteiten: kies degene van de Tasshack-integratie. Kamernamen en ID’s worden uit het `rooms`-attribuut van de kaartcamera gelezen. Zonder cameragegevens gebruikt de kaart de kamers van `selected_map` op de vacuum-entiteit. Bij het wisselen van verdieping wordt de selectie gewist. De kamertegels en knoppen behouden hun bestaande uiterlijk.
+
+Als er geen kamers verschijnen, kies je in de editor de juiste **Kaartcamera**. De kaart gebruikt automatisch de gebruikelijke entiteitsnaam of een bijbehorende entiteit van hetzelfde apparaat; hij kiest niet zomaar een camera van een andere robot. Je kunt via **Kamer toevoegen** ook kamers handmatig invullen als terugval. Kies **Handmatig ingevulde kamers** om uitsluitend deze lijst te gebruiken.
+
+### Alleen stofzuigen of ook dweilen
+
+Standaard staat **Ook dweilen** uit. Voor elke start wordt de reinigingsmodus expliciet ingesteld op `Sweeping` (alleen stofzuigen). Zet de schakelaar aan voor `Sweeping and mopping` (stofzuigen met dweilen). Na een geslaagde start staat de schakelaar weer uit voor de volgende opdracht.
+
+De kaart gebruikt `select.select_option` vóór `dreame_vacuum.vacuum_clean_segment`. Zo nodig worden de gevonden aangepaste kamerreiniging en CleanGenius uitgeschakeld om de gekozen modus te gebruiken. Als de reinigingsmodus niet beschikbaar is of de instelling mislukt, start de kaart geen reiniging en toont hij een fout. Kies bij hernoemde entiteiten de juiste **Reinigingsmodus-entiteit** in de editor. Het apparaat moet de gekozen modus ondersteunen.
 
 ### Optioneel: YAML
 
@@ -28,6 +36,18 @@ type: custom:dreame-compact-card
 entity: vacuum.jouw_dreame
 title: Dreame
 height: 360
+auto_rooms: true
+# Optioneel bij hernoemde entiteiten:
+# map_entity: camera.jouw_dreame_map
+# cleaning_mode_entity: select.jouw_dreame_cleaning_mode
+```
+
+Optioneel een handmatige kamerlijst:
+
+```yaml
+type: custom:dreame-compact-card
+entity: vacuum.jouw_dreame
+auto_rooms: false
 rooms:
   - id: 1
     name: Woonkamer
