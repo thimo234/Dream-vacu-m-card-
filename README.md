@@ -4,7 +4,7 @@ Een compacte Nederlandstalige Home Assistant-kaart met kamerselectie, batterijst
 
 ## Voorwaarden
 
-Voor zes kamers kun je de hoogte in de editor op **400 pixels** zetten. De zes tegels passen dan in twee kolommen en drie rijen zonder scrollen, ook met de schakelaar voor dweilen en de bedieningsknoppen zichtbaar.
+Voor zes kamers kun je de hoogte in de editor op **400 pixels** zetten. De zes tegels passen dan in twee kolommen en drie rijen zonder scrollen, ook met de twee reinigingsmodusknoppen en de bedieningsknoppen zichtbaar.
 
 - Je vierkante NSPanel Pro moet het Home Assistant-dashboard in een browser weergeven.
 - Een werkende Dreame-integratie met de actie `dreame_vacuum.vacuum_clean_segment` en parameter `segments`. Controleer dit in Ontwikkelaarstools → Acties. Niet iedere Dreame-integratie biedt dezelfde acties.
@@ -27,9 +27,11 @@ Als er geen kamers verschijnen, kies je in de editor de juiste **Kaartcamera**. 
 
 ### Alleen stofzuigen of ook dweilen
 
-Standaard staat **Ook dweilen** uit. Voor elke start wordt de reinigingsmodus expliciet ingesteld op `Sweeping` (alleen stofzuigen). Zet de schakelaar aan voor `Sweeping and mopping` (stofzuigen met dweilen). Na een geslaagde start staat de schakelaar weer uit voor de volgende opdracht.
+De kaart toont twee keuzeknoppen: **Alleen zuigen** en **Zuigen + dweilen**. Standaard is **Alleen zuigen** geselecteerd. Kies de modus, selecteer kamers en druk op Start. Na een geslaagde start wordt weer **Alleen zuigen** geselecteerd voor de volgende opdracht. Kamernamen en de bestaande kamertegels blijven behouden.
 
-De kaart gebruikt `select.select_option` vóór `dreame_vacuum.vacuum_clean_segment`. Zo nodig worden de gevonden aangepaste kamerreiniging en CleanGenius uitgeschakeld om de gekozen modus te gebruiken. Als de reinigingsmodus niet beschikbaar is of de instelling mislukt, start de kaart geen reiniging en toont hij een fout. Kies bij hernoemde entiteiten de juiste **Reinigingsmodus-entiteit** in de editor. Het apparaat moet de gekozen modus ondersteunen.
+Voor elke start zet de kaart eerst de gevonden **CleanGenius**-select op uit, daarna de reinigingsmodus op alleen zuigen of zuigen met dweilen, en vervolgens start hij de geselecteerde kamers. Actieve aangepaste kamerreiniging wordt ook uitgeschakeld. Als een stap mislukt, start de kaart geen reiniging en toont hij een fout. Nederlandse en Engelse opties worden herkend, waaronder `Uit` / `Off`, `Stofzuigen` / `Sweeping` en `Stofzuigen en dweilen` / `Sweeping and mopping`.
+
+Kies bij hernoemde entiteiten in de editor **CleanGenius-entiteit** en **Reinigingsmodus-entiteit**. Voor jouw installatie zijn dit `select.stofzuiger_cleangenius` en `select.stofzuiger_cleaning_mode`. De drie optievelden in de editor bevatten de opties die deze entiteiten daadwerkelijk aanbieden. Je kunt daarin expliciet de uit-optie, stofzuigen en zuigen met dweilen selecteren als automatische herkenning niet werkt. Het apparaat moet de gekozen modus ondersteunen.
 
 ### Optioneel: YAML
 
@@ -42,6 +44,7 @@ auto_rooms: true
 # Optioneel bij hernoemde entiteiten:
 # map_entity: camera.jouw_dreame_map
 # cleaning_mode_entity: select.jouw_dreame_cleaning_mode
+# cleangenius_entity: select.jouw_dreame_cleangenius
 ```
 
 Optioneel een handmatige kamerlijst:

@@ -114,3 +114,33 @@ test('explicit map and cleaning-mode entities support renamed entities', async (
   c.hass = {...c._hass,states:{...c._hass.states,'camera.floor':{attributes:{rooms:[{room_id:4,name:'Entree'}]}},'select.mode':c._hass.states['select.robot_cleaning_mode']}};
   c.selected.add(4); await c.run('clean'); assert.equal(calls[0][2].entity_id, 'select.mode'); assert.equal(calls[1][2].segments[0], 4);
 });
+test('Dutch vacuum-only first turns off user CleanGenius then selects Stofzuigen', async () => {
+  const calls = []; const c = card(async (...args) => calls.push(args));
+  c.setConfig({entity:'vacuum.stofzuiger',rooms:[{id:1,name:'Keuken'}]});
+  c.hass = {callService:c._hass.callService,states:{
+    'vacuum.stofzuiger':{state:'docked'},
+    'select.stofzuiger_cleangenius':{state:'Routine',attributes:{options:['Uit','Routine']}},
+    'select.stofzuiger_cleaning_mode':{state:'Stofzuigen en dweilen',attributes:{options:['Stofzuigen','Stofzuigen en dweilen']}},
+  }};
+  c.selected.add(1); await c.run('clean');
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)),[
+    ['select','select_option',{entity_id:'select.stofzuiger_cleangenius',option:'Uit'}],
+    ['select','select_option',{entity_id:'select.stofzuiger_cleaning_mode',option:'Stofzuigen'}],
+    ['dreame_vacuum','vacuum_clean_segment',{entity_id:'vacuum.stofzuiger',segments:[1]}],
+  ]);
+});
+test('explicit options and renamed CleanGenius support nonstandard option strings', async () => {
+  const calls = []; const c = card(async (...args) => calls.push(args));
+  c.setConfig({entity:'vacuum.robot',cleangenius_entity:'select.ai',cleangenius_off_option:'Stop intelligent',mop_option:'Combined clean',rooms:[{id:1,name:'Hal'}]});
+  c._hass.states['select.ai']={state:'Auto',attributes:{options:['Stop intelligent','Auto']}};
+  c._hass.states['select.robot_cleaning_mode'].attributes.options.push('Combined clean');
+  c.mop = true; c.selected.add(1); await c.run('clean');
+  assert.equal(calls[0][2].entity_id,'select.ai'); assert.equal(calls[0][2].option,'Stop intelligent');
+  assert.equal(calls[1][2].option,'Combined clean'); assert.equal(calls[2][1],'vacuum_clean_segment');
+});
+test('CleanGenius failure prevents changing mode or starting cleaning', async () => {
+  const calls = []; const c = card(async (...args) => {calls.push(args); throw new Error('CleanGenius mislukt');});
+  c._hass.states['select.robot_cleangenius']={state:'Auto',attributes:{options:['Off','Auto']}};
+  c.selected.add(1); await c.run('clean');
+  assert.equal(calls.length,1); assert.equal(calls[0][2].entity_id,'select.robot_cleangenius'); assert.equal(c.selected.size,1);
+});
