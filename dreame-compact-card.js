@@ -1,0 +1,227 @@
+/* Dreame Compact Card v0.1.0 — no external dependencies. */
+class DreameCompactCard extends HTMLElement {
+  static getConfigElement() { return document.createElement('dreame-compact-card-editor'); }
+  static getStubConfig(hass) {
+    return { entity: Object.keys(hass?.states || {}).find(id => id.startsWith('vacuum.')) || '', title: 'Dreame', height: 360, rooms: [] };
+  }
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this.selected = new Set();
+    this.pending = false;
+  }
+
+  setConfig(config) {
+    if (config.entity && !config.entity.startsWith('vacuum.')) throw new Error('Vul een vacuum-entiteit in.');
+    config = { ...config, rooms: config.rooms ?? [] };
+    if (!Array.isArray(config.rooms)) throw new Error('Voeg rooms toe met id en name.');
+    const ids = new Set();
+    for (const room of config.rooms) {
+      if (!Number.isInteger(room.id) || room.id < 1 || typeof room.name !== 'string' || !room.name.trim() || ids.has(room.id)) {
+        throw new Error('Elke kamer heeft een uniek positief numeriek id en een naam nodig.');
+      }
+      ids.add(room.id);
+    }
+    const height = config.height ?? 360;
+    if (!Number.isInteger(height) || height < 260 || height > 1200) throw new Error('height moet tussen 260 en 1200 liggen.');
+    this.config = { ...config, height, rooms: config.rooms.map(room => ({ ...room })) };
+    this.selected.clear();
+    this.message = !config.entity || !config.rooms.length ? 'Kies een stofzuiger en voeg kamers toe in de kaarteditor.' : '';
+    this.render();
+  }
+
+  set hass(value) { this._hass = value; this.update(); }
+  getCardSize() { return Math.ceil((this.config?.height ?? 360) / 50); }
+  getGridOptions() { return { columns: 12, min_columns: 6, rows: Math.ceil((this.config?.height ?? 360) / 56) }; }
+
+  render() {
+    if (!this.config) return;
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display:block; --accent:var(--primary-color,#238879); }
+        * { box-sizing:border-box; }
+        ha-card { height:${this.config.height}px; display:flex; flex-direction:column; gap:10px; padding:14px; overflow:hidden; color:var(--primary-text-color,#203631); background:var(--ha-card-background,var(--card-background-color,#fff)); }
+        header { display:flex; align-items:center; gap:10px; min-height:38px; }
+        .robot { background:var(--secondary-background-color,#edf4f1); border-radius:14px; padding:8px; color:var(--accent); }
+        .heading { flex:1; min-width:0; } h2 { margin:0; font-size:18px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .status, .battery { font-size:12px; color:var(--secondary-text-color,#61736c); }
+        .toolbar { display:flex; justify-content:space-between; align-items:center; font-size:13px; }
+        button { font:inherit; cursor:pointer; border:0; touch-action:manipulation; color:inherit; }
+        button:focus-visible { outline:3px solid var(--accent); outline-offset:-3px; }
+        button:disabled { opacity:.45; cursor:default; }
+        .clear { background:transparent; min-height:40px; padding:0 8px; color:var(--accent); }
+        .rooms { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:minmax(58px,auto); align-content:start; gap:8px; overflow:auto; flex:1; min-height:0; }
+        .room { display:flex; align-items:center; gap:8px; text-align:left; padding:10px; min-width:0; border:2px solid transparent; border-radius:13px; background:var(--secondary-background-color,#eff3f1); }
+        .room span { overflow-wrap:anywhere; font-size:14px; flex:1; }
+        .room[aria-pressed=true] { border-color:var(--accent); background:var(--primary-background-color,#e5f3ee); }
+        .check { font-size:17px; color:var(--accent); }
+        footer { display:grid; grid-template-columns:minmax(0,1fr) 46px 46px; gap:8px; }
+        footer button { min-height:46px; border-radius:12px; background:var(--secondary-background-color,#eff3f1); }
+        .start { background:var(--accent); color:var(--text-primary-color,#fff); font-weight:600; padding:8px; }
+        .message { margin:0; font-size:12px; max-height:44px; overflow:auto; } .message:empty { display:none; }
+      </style>
+      <ha-card>
+        <header><ha-icon class="robot" icon="mdi:robot-vacuum"></ha-icon><div class="heading"><h2></h2><span class="status"></span></div><span class="battery"></span></header>
+        <div class="toolbar"><span class="count"></span><button class="clear">Wis selectie</button></div>
+        <div class="rooms" role="group" aria-label="Ruimtes selecteren"></div>
+        <p class="message" role="status" aria-live="polite"></p>
+        <footer><button class="start"></button><button class="pause" aria-label="Pauzeren" title="Pauzeren"><ha-icon icon="mdi:pause"></ha-icon></button><button class="dock" aria-label="Naar laadstation" title="Naar laadstation"><ha-icon icon="mdi:home-import-outline"></ha-icon></button></footer>
+      </ha-card>`;
+    this.shadowRoot.querySelector('h2').textContent = this.config.title || 'Dreame';
+    const container = this.shadowRoot.querySelector('.rooms');
+    for (const room of this.config.rooms) {
+      const button = document.createElement('button');
+      button.className = 'room';
+      button.dataset.id = room.id;
+      const icon = document.createElement('ha-icon');
+      icon.setAttribute('icon', room.icon || 'mdi:floor-plan');
+      const label = document.createElement('span');
+      label.textContent = room.name;
+      const check = document.createElement('b');
+      check.className = 'check';
+      check.setAttribute('aria-hidden', 'true');
+      button.append(icon, label, check);
+      button.onclick = () => {
+        if (this.pending) return;
+        this.selected.has(room.id) ? this.selected.delete(room.id) : this.selected.add(room.id);
+        this.message = ''; this.update();
+      };
+      container.append(button);
+    }
+    this.shadowRoot.querySelector('.clear').onclick = () => { this.selected.clear(); this.update(); };
+    this.shadowRoot.querySelector('.start').onclick = () => this.run('clean');
+    this.shadowRoot.querySelector('.pause').onclick = () => this.run('pause');
+    this.shadowRoot.querySelector('.dock').onclick = () => this.run('return_to_base');
+    this.update();
+  }
+
+  update() {
+    if (!this.config || !this.shadowRoot.querySelector('ha-card')) return;
+    const state = this._hass?.states[this.config.entity];
+    const offline = !state || ['unavailable', 'unknown'].includes(state.state);
+    const labels = { docked:'Op het laadstation', cleaning:'Bezig met schoonmaken', returning:'Onderweg naar laadstation', paused:'Gepauzeerd', idle:'Gereed', error:'Storing', unavailable:'Niet beschikbaar', unknown:'Onbekend' };
+    const q = selector => this.shadowRoot.querySelector(selector);
+    q('.status').textContent = state ? (labels[state.state] || state.state) : 'Entiteit niet beschikbaar';
+    const battery = state?.attributes?.battery_level;
+    q('.battery').textContent = typeof battery === 'number' ? `${battery}%` : '';
+    q('.count').textContent = `${this.selected.size} geselecteerd`;
+    for (const button of this.shadowRoot.querySelectorAll('.room')) {
+      const active = this.selected.has(Number(button.dataset.id));
+      button.setAttribute('aria-pressed', String(active));
+      button.querySelector('.check').textContent = active ? '✓' : '';
+      button.disabled = this.pending;
+    }
+    q('.start').textContent = this.pending ? 'Even wachten…' : `Start${this.selected.size ? ` · ${this.selected.size} ${this.selected.size === 1 ? 'ruimte' : 'ruimtes'}` : ' schoonmaken'}`;
+    q('.start').disabled = offline || this.pending || !this.selected.size || ['cleaning', 'returning', 'error'].includes(state?.state);
+    q('.pause').disabled = offline || this.pending || state?.state !== 'cleaning';
+    q('.dock').disabled = offline || this.pending || ['docked', 'returning'].includes(state?.state);
+    q('.clear').disabled = this.pending || !this.selected.size;
+    q('.message').textContent = this.message || '';
+  }
+
+  async run(action) {
+    const state = this._hass?.states[this.config.entity];
+    if (this.pending || !state || ['unknown', 'unavailable'].includes(state.state)) return;
+    if (action === 'clean' && (!this.selected.size || ['cleaning', 'returning', 'error'].includes(state.state))) return;
+    this.pending = true; this.message = ''; this.update();
+    try {
+      if (action === 'clean') {
+        await this._hass.callService('dreame_vacuum', 'vacuum_clean_segment', { entity_id:this.config.entity, segments:[...this.selected] });
+        this.selected.clear();
+      } else {
+        await this._hass.callService('vacuum', action, { entity_id:this.config.entity });
+      }
+      this.message = 'Opdracht verstuurd.';
+    } catch (error) {
+      this.message = `Opdracht mislukt: ${error?.message || String(error)}`;
+    } finally { this.pending = false; this.update(); }
+  }
+}
+class DreameCompactCardEditor extends HTMLElement {
+  constructor() { super(); this.attachShadow({ mode: 'open' }); }
+  setConfig(config) {
+    this.config = { ...config, rooms: (config.rooms || []).map(room => ({ ...room })) };
+    this.render();
+  }
+  set hass(value) {
+    this._hass = value;
+    const signature = JSON.stringify(Object.entries(value?.states || {}).filter(([id]) => id.startsWith('vacuum.')).map(([id, state]) => [id, state.attributes?.friendly_name]));
+    if (signature !== this._entities) { this._entities = signature; this.render(); }
+  }
+  emit() {
+    const inputs = [...this.shadowRoot.querySelectorAll('input')];
+    for (const input of inputs) input.setCustomValidity('');
+    const ids = new Set();
+    for (const input of this.shadowRoot.querySelectorAll('[data-room-id]')) {
+      const id = Number(input.value);
+      if (ids.has(id)) input.setCustomValidity('Dit kamer-ID is al gebruikt.');
+      ids.add(id);
+    }
+    const invalid = inputs.find(input => !input.checkValidity());
+    if (invalid) { invalid.reportValidity(); return; }
+    this.dispatchEvent(new CustomEvent('config-changed', {
+      bubbles: true, composed: true,
+      detail: { config: { ...this.config, rooms: this.config.rooms.map(room => ({ ...room })) } },
+    }));
+  }
+  render() {
+    if (!this.config) return;
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display:block; color:var(--primary-text-color); }
+        * { box-sizing:border-box; } .fields { display:grid; gap:14px; }
+        label { display:grid; gap:6px; font-size:14px; }
+        input, select, button { font:inherit; color:var(--primary-text-color); background:var(--card-background-color,#fff); border:1px solid var(--divider-color,#aaa); border-radius:8px; padding:10px; min-height:44px; width:100%; }
+        button { cursor:pointer; } input:focus, select:focus, button:focus-visible { outline:2px solid var(--primary-color); }
+        fieldset { min-width:0; border:1px solid var(--divider-color,#ccc); border-radius:10px; padding:12px; margin:0; display:grid; gap:10px; }
+        .room-fields { display:grid; grid-template-columns:90px minmax(0,1fr); gap:10px; }
+        p { font-size:13px; color:var(--secondary-text-color); } .rooms { display:grid; gap:12px; }
+      </style>
+      <div class="fields">
+        <label>Stofzuiger<select class="entity"><option value="">Kies een stofzuiger</option></select></label>
+        <label>Titel<input class="title" type="text" placeholder="Dreame"></label>
+        <label>Hoogte in pixels<input class="height" type="number" min="260" max="1200" step="1" required></label>
+        <p>360 pixels is het startpunt voor je vierkante NSPanel Pro. Gebruik de numerieke kamer-ID’s van de huidige kaart in de Tasshack-integratie.</p>
+        <div class="rooms"></div>
+        <button class="add" type="button">Kamer toevoegen</button>
+      </div>`;
+    const q = selector => this.shadowRoot.querySelector(selector);
+    const select = q('.entity');
+    const entities = Object.entries(this._hass?.states || {}).filter(([id]) => id.startsWith('vacuum.'));
+    if (this.config.entity && !entities.some(([id]) => id === this.config.entity)) entities.push([this.config.entity, {}]);
+    for (const [id, state] of entities) {
+      const option = document.createElement('option'); option.value = id;
+      option.textContent = state.attributes?.friendly_name ? `${state.attributes.friendly_name} (${id})` : id;
+      select.append(option);
+    }
+    select.value = this.config.entity || '';
+    select.onchange = () => { this.config.entity = select.value; this.emit(); };
+    q('.title').value = this.config.title ?? 'Dreame';
+    q('.title').onchange = event => { this.config.title = event.target.value; this.emit(); };
+    q('.height').value = this.config.height ?? 360;
+    q('.height').onchange = event => { this.config.height = Number(event.target.value); this.emit(); };
+    this.config.rooms.forEach((room, index) => {
+      const fieldset = document.createElement('fieldset');
+      fieldset.innerHTML = `<legend></legend><div class="room-fields"><label>Kamer-ID<input data-room-id type="number" min="1" step="1" required></label><label>Naam<input class="name" type="text" required pattern=".*\\S.*"></label></div><label>Icoon<input class="icon" type="text" placeholder="mdi:floor-plan"></label><button type="button">Kamer verwijderen</button>`;
+      fieldset.querySelector('legend').textContent = `Kamer ${index + 1}`;
+      for (const [selector, key] of [['[data-room-id]', 'id'], ['.name', 'name'], ['.icon', 'icon']]) {
+        const input = fieldset.querySelector(selector); input.value = room[key] ?? '';
+        input.onchange = () => { this.config.rooms[index][key] = key === 'id' ? Number(input.value) : input.value; this.emit(); };
+      }
+      fieldset.querySelector('button').onclick = () => {
+        this.config.rooms.splice(index, 1); this.render(); this.emit();
+      };
+      q('.rooms').append(fieldset);
+    });
+    q('.add').onclick = () => {
+      // Never guess a real room ID: user must enter it before the config is emitted.
+      this.config.rooms.push({ id: '', name: '', icon: 'mdi:floor-plan' });
+      this.render();
+      this.shadowRoot.querySelectorAll('[data-room-id]')[this.config.rooms.length - 1].focus();
+    };
+  }
+}
+if (!customElements.get('dreame-compact-card-editor')) customElements.define('dreame-compact-card-editor', DreameCompactCardEditor);
+if (!customElements.get('dreame-compact-card')) customElements.define('dreame-compact-card', DreameCompactCard);
+window.customCards = window.customCards || [];
+window.customCards.push({ type:'dreame-compact-card', name:'Dreame Compact Card', description:'Compacte kamerselectie voor je Dreame met visuele configuratie.' });
