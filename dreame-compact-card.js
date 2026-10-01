@@ -1,4 +1,4 @@
-/* Dreame Compact Card v0.2.0 — no external dependencies. */
+/* Dreame Compact Card v0.2.1 — no external dependencies. */
 function relatedEntity(hass, vacuum, domain, suffix, explicit) {
   if (explicit) return explicit;
   const states = hass?.states || {};
@@ -87,26 +87,26 @@ class DreameCompactCard extends HTMLElement {
       <style>
         :host { display:block; --accent:var(--primary-color,#238879); }
         * { box-sizing:border-box; }
-        ha-card { height:${this.config.height}px; display:flex; flex-direction:column; gap:10px; padding:14px; overflow:hidden; color:var(--primary-text-color,#203631); background:var(--ha-card-background,var(--card-background-color,#fff)); }
-        header { display:flex; align-items:center; gap:10px; min-height:38px; }
-        .robot { background:var(--secondary-background-color,#edf4f1); border-radius:14px; padding:8px; color:var(--accent); }
+        ha-card { height:${this.config.height}px; display:flex; flex-direction:column; gap:8px; padding:12px; overflow:hidden; color:var(--primary-text-color,#203631); background:var(--ha-card-background,var(--card-background-color,#fff)); }
+        header { display:flex; align-items:center; gap:10px; min-height:40px; flex-shrink:0; }
+        .robot { display:inline-flex; width:40px; height:40px; align-items:center; justify-content:center; flex-shrink:0; background:var(--secondary-background-color,#edf4f1); border-radius:14px; padding:8px; color:var(--accent); }
         .heading { flex:1; min-width:0; } h2 { margin:0; font-size:18px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .status, .battery { font-size:12px; color:var(--secondary-text-color,#61736c); }
-        .toolbar { display:flex; justify-content:space-between; align-items:center; font-size:13px; }
+        .toolbar { display:flex; justify-content:space-between; align-items:center; min-height:32px; flex-shrink:0; font-size:13px; }
         button { font:inherit; cursor:pointer; border:0; touch-action:manipulation; color:inherit; }
         button:focus-visible { outline:3px solid var(--accent); outline-offset:-3px; }
         button:disabled { opacity:.45; cursor:default; }
-        .clear { background:transparent; min-height:40px; padding:0 8px; color:var(--accent); }
-        .rooms { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:minmax(58px,auto); align-content:start; gap:8px; overflow:auto; flex:1; min-height:0; }
-        .room { display:flex; align-items:center; gap:8px; text-align:left; padding:10px; min-width:0; border:2px solid transparent; border-radius:13px; background:var(--secondary-background-color,#eff3f1); }
+        .clear { background:transparent; min-height:32px; padding:0 8px; color:var(--accent); }
+        .rooms { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:minmax(48px,1fr); align-content:start; gap:8px; overflow:auto; flex:1; min-height:0; }
+        .room { display:flex; align-items:center; gap:8px; text-align:left; padding:8px; min-width:0; border:2px solid transparent; border-radius:13px; background:var(--secondary-background-color,#eff3f1); }
         .room span { overflow-wrap:anywhere; font-size:14px; flex:1; }
         .room[aria-pressed=true] { border-color:var(--accent); background:var(--primary-background-color,#e5f3ee); }
         .check { font-size:17px; color:var(--accent); }
-        footer { display:grid; grid-template-columns:minmax(0,1fr) 46px 46px; gap:8px; }
+        footer { display:grid; grid-template-columns:minmax(0,1fr) 46px 46px; gap:8px; flex-shrink:0; }
         footer button { min-height:46px; border-radius:12px; background:var(--secondary-background-color,#eff3f1); }
         .start { background:var(--accent); color:var(--text-primary-color,#fff); font-weight:600; padding:8px; }
         .message { margin:0; font-size:12px; max-height:44px; overflow:auto; } .message:empty { display:none; }
-        .mop { display:flex; align-items:center; gap:8px; min-height:36px; font-size:14px; } .mop input { width:22px; height:22px; accent-color:var(--accent); }
+        .mop { display:flex; align-items:center; gap:8px; min-height:32px; flex-shrink:0; font-size:14px; } .mop input { width:22px; height:22px; accent-color:var(--accent); }
       </style>
       <ha-card>
         <header><ha-icon class="robot" icon="mdi:robot-vacuum"></ha-icon><div class="heading"><h2></h2><span class="status"></span></div><span class="battery"></span></header>

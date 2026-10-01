@@ -4,6 +4,8 @@ Een compacte Nederlandstalige Home Assistant-kaart met kamerselectie, batterijst
 
 ## Voorwaarden
 
+Voor zes kamers kun je de hoogte in de editor op **400 pixels** zetten. De zes tegels passen dan in twee kolommen en drie rijen zonder scrollen, ook met de schakelaar voor dweilen en de bedieningsknoppen zichtbaar.
+
 - Je vierkante NSPanel Pro moet het Home Assistant-dashboard in een browser weergeven.
 - Een werkende Dreame-integratie met de actie `dreame_vacuum.vacuum_clean_segment` en parameter `segments`. Controleer dit in Ontwikkelaarstools → Acties. Niet iedere Dreame-integratie biedt dezelfde acties.
 - De vacuum-entiteit, kaartcamera met `rooms` en select-entiteit voor `cleaning_mode` van je robot. De kaart probeert bijbehorende entiteiten automatisch te vinden; je kunt de camera en reinigingsmodus ook kiezen in de editor.
