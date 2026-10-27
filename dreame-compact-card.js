@@ -1,4 +1,4 @@
-/* Dreame Compact Card v0.4.0 — no external dependencies. */
+/* Dreame Compact Card v0.4.1 — no external dependencies. */
 const MODE_OPTIONS = {
   vacuum: ['Sweeping', 'Vacuuming', 'Vacuum', 'Stofzuigen', 'Zuigen', 'Alleen stofzuigen', 'Alleen zuigen'],
   mop: ['Sweeping and mopping', 'Vacuum and mop', 'Stofzuigen en dweilen', 'Zuigen en dweilen', 'Stofzuigen + dweilen', 'Zuigen + dweilen'],
@@ -207,11 +207,9 @@ class DreameCompactCard extends HTMLElement {
   }
 
   async prepareMode(hass, config, mop) {
-    const modeEntity = relatedEntity(hass, config.entity, 'select', 'cleaning_mode', config.cleaning_mode_entity);
-    const mode = hass.states[modeEntity];
-    if (!mode || ['unavailable', 'unknown'].includes(mode.state)) throw new Error('Kies een beschikbare reinigingsmodus-entiteit in de kaarteditor.');
-    const option = findOption(mode, mop ? MODE_OPTIONS.mop : MODE_OPTIONS.vacuum, mop ? config.mop_option : config.vacuum_option);
-    if (!option) throw new Error(mop ? 'Deze stofzuiger biedt geen stofzuigen met dweilen aan.' : 'De optie alleen stofzuigen is niet beschikbaar.');
+    // CleanGenius can make cleaning_mode unavailable or remove it entirely.
+    // Do not inspect its state/options until after disabling CleanGenius.
+    let changed = false;
     const genius = relatedEntity(hass, config.entity, 'select', 'cleangenius', config.cleangenius_entity);
     const geniusState = hass.states[genius];
     if (config.cleangenius_entity && (!geniusState || ['unavailable', 'unknown'].includes(geniusState.state))) throw new Error('De gekozen CleanGenius-entiteit is niet beschikbaar.');
@@ -220,10 +218,36 @@ class DreameCompactCard extends HTMLElement {
       if (!off) throw new Error('Kies de uit-optie voor CleanGenius in de kaarteditor.');
       // Always send this first: the robot may still be using its intelligent routine.
       await hass.callService('select', 'select_option', { entity_id:genius, option:off });
+      changed = true;
     }
-    const custom = relatedEntity(hass, config.entity, 'switch', 'customized_cleaning');
-    if (hass.states[custom]?.state === 'on') await hass.callService('switch', 'turn_off', { entity_id:custom });
+    const live = this._hass || hass;
+    const custom = relatedEntity(live, config.entity, 'switch', 'customized_cleaning');
+    if (live.states[custom]?.state === 'on') {
+      await hass.callService('switch', 'turn_off', { entity_id:custom });
+      changed = true;
+    }
+    const { modeEntity, option } = await this.waitForMode(config, mop, changed ? 12000 : 0);
     await hass.callService('select', 'select_option', { entity_id:modeEntity, option });
+  }
+
+  async waitForMode(config, mop, timeout) {
+    const deadline = Date.now() + timeout;
+    while (true) {
+      if (this.config !== config) throw new Error('De kaart is gewijzigd. Selecteer de kamers opnieuw.');
+      // Home Assistant replaces its hass object on updates. Always use the latest one.
+      const live = this._hass;
+      const modeEntity = relatedEntity(live, config.entity, 'select', 'cleaning_mode', config.cleaning_mode_entity);
+      const mode = live?.states?.[modeEntity];
+      const available = mode && !['unavailable', 'unknown'].includes(mode.state);
+      const option = available && findOption(mode, mop ? MODE_OPTIONS.mop : MODE_OPTIONS.vacuum, mop ? config.mop_option : config.vacuum_option);
+      if (option) return { modeEntity, option };
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        if (!available) throw new Error('De reinigingsmodus is nog niet beschikbaar. Controleer CleanGenius en de reinigingsmodus-entiteit in de kaarteditor.');
+        throw new Error(mop ? 'Deze stofzuiger biedt geen stofzuigen met dweilen aan.' : 'De optie alleen stofzuigen is niet beschikbaar.');
+      }
+      await new Promise(resolve => setTimeout(resolve, Math.min(150, remaining)));
+    }
   }
 
   async run(action, mop = false) {

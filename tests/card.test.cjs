@@ -10,6 +10,7 @@ const context = {
   CustomEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
   document: { createElement: tag => ({ tag }) },
   window: {},
+  setTimeout,
 };
 vm.runInNewContext(fs.readFileSync('dreame-compact-card.js', 'utf8'), context);
 function card(callService = async () => {}) {
@@ -180,4 +181,44 @@ test('select-all includes only current room IDs and does not start cleaning', ()
   assert.deepEqual([...c.selected],[1,7]); assert.equal(calls,0);
   c.pending = true; c.rooms = [{id:9,name:'Nieuwe kamer'}]; c.selectAll();
   assert.deepEqual([...c.selected],[1,7]);
+});
+for (const initial of ['unavailable', 'missing']) {
+  test(`turns off CleanGenius before waiting for an initially ${initial} cleaning mode`, async () => {
+    const calls = [];
+    let refresh;
+    const c = card(async (...args) => {
+      calls.push(args);
+      if (args[2].entity_id === 'select.robot_cleangenius') {
+        refresh = setTimeout(() => {
+          // Real HA sends a new hass object; the original snapshot remains unavailable.
+          c.hass = { ...c._hass, states:{...c._hass.states,
+            'select.robot_cleangenius':{state:'Uit',attributes:{options:['Uit','Routine']}},
+            'select.robot_cleaning_mode':{state:'Stofzuigen',attributes:{options:['Stofzuigen','Stofzuigen en dweilen']}},
+          }};
+        },20);
+      }
+    });
+    c._hass.states['select.robot_cleangenius']={state:'Routine',attributes:{options:['Uit','Routine']}};
+    if (initial === 'missing') delete c._hass.states['select.robot_cleaning_mode'];
+    else c._hass.states['select.robot_cleaning_mode']={state:'unavailable',attributes:{options:[]}};
+    const oldHass=c._hass;
+    c.selected.add(1);
+    try { await c.run('clean', true); } finally { clearTimeout(refresh); }
+    assert.equal(calls.length,3);
+    assert.equal(calls[0][2].entity_id,'select.robot_cleangenius');
+    assert.equal(calls[0][2].option,'Uit');
+    assert.equal(calls[1][2].option,'Stofzuigen en dweilen');
+    assert.equal(calls[2][1],'vacuum_clean_segment');
+    assert.notEqual(c._hass,oldHass); assert.equal(c.selected.size,0);
+  });
+}
+test('times out without starting if mode remains unavailable after CleanGenius off', async () => {
+  const calls = []; const c = card(async (...args) => calls.push(args));
+  c._hass.states['select.robot_cleangenius']={state:'Routine',attributes:{options:['Off','Routine']}};
+  c._hass.states['select.robot_cleaning_mode']={state:'unavailable',attributes:{}};
+  const original=c.waitForMode;
+  c.waitForMode=function(config,mop) { return original.call(this,config,mop,20); };
+  c.selected.add(1); await c.run('clean');
+  assert.equal(calls.length,1); assert.equal(calls[0][2].option,'Off');
+  assert.equal(c.selected.size,1); assert.equal(c.pending,false); assert.match(c.message,/nog niet beschikbaar/);
 });

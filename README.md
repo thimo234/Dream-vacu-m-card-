@@ -29,6 +29,8 @@ Als er geen kamers verschijnen, kies je in de editor de juiste **Kaartcamera**. 
 
 ### Alleen stofzuigen of ook dweilen
 
+Als CleanGenius actief is, kan de schoonmaakmodus tijdelijk ontbreken of niet beschikbaar zijn. De kaart schakelt daarom eerst CleanGenius uit en wacht daarna maximaal 12 seconden op de actuele reinigingsmodus en de bijbehorende opties van Home Assistant. Blijft deze niet beschikbaar, dan wordt geen schoonmaak gestart en blijft de kamerselectie bewaard.
+
 Selecteer kamers en druk op **Alleen zuigen** of **Zuigen + dweilen**. Deze knoppen starten direct de geselecteerde kamers in de gekozen modus. Er is geen losse modusselector of startknop meer. De tegel **Alle ruimtes** selecteert alle kamers van de huidige verdieping; deze selectie start op zichzelf geen reiniging. Je kunt daarna individuele kamers deselecteren. Zonder selectie zijn beide startknoppen uitgeschakeld. Kamernamen en de bestaande kamertegels blijven behouden.
 
 Voor elke start zet de kaart eerst de gevonden **CleanGenius**-select op uit, daarna de reinigingsmodus op alleen zuigen of zuigen met dweilen, en vervolgens start hij de geselecteerde kamers. Actieve aangepaste kamerreiniging wordt ook uitgeschakeld. Als een stap mislukt, start de kaart geen reiniging en toont hij een fout. Nederlandse en Engelse opties worden herkend, waaronder `Uit` / `Off`, `Stofzuigen` / `Sweeping` en `Stofzuigen en dweilen` / `Sweeping and mopping`.
